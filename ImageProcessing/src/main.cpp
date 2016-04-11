@@ -7,87 +7,108 @@
 using namespace cimg_library;
 
 CImg<float> toGrayscale(const CImg<float> * const);
-void generatePyramid(const CImg<float> * const, std::string, std::string, int);
-CImg<float> getBlur(const CImg<float> * const);
+std::vector<CImg<float>> generatePyramid(const CImg<float> * const, std::string, std::string, int);
 CImg<float> apply1DKernel(const CImg<float> * const, std::vector<float>);
 CImg<float> downsample(const CImg<float> * const);
 CImg<float> upsample(const CImg<float> * const);
 CImg<float> reduce(const CImg<float> * const);
 CImg<float> expand(const CImg<float> * const);
-CImg<float> colapse(const CImg<float> * const);
+CImg<float> colapse(const CImg<float> * const, const CImg<float> * const);
+CImg<float> sum(const CImg<float> * const, const CImg<float> * const);
+CImg<float> minus(const CImg<float> * const, const CImg<float> * const);
+
+
+bool debugMode = false;
 
 
 int main(int argc, char **argv) {
 
 	std::string sourceImagePath = cimg_option("-i", "", "Input image source");
+	std::string blendImagePath = cimg_option("-b", "", "Input blend image source");
+	std::string maskImagePath = cimg_option("-m", "", "Input mask image source");
 	std::string outputPath = cimg_option("-o", ".\\", "Output image path");
-	const int steps = cimg_option("-s", 1, "pyramid height");
-
-
+	int steps = cimg_option("-s", 1, "pyramid height");
+	const bool debug = cimg_option("-debug", false, 0);
+	
 	CImg<float> imageSource(sourceImagePath.c_str());
 	std::string ext = cimg::split_filename(sourceImagePath.c_str());
 
-	//std::cout << "source width:" << imageSource.width() << " height:" << imageSource.height() << std::endl;
+	debugMode = debug;
+	steps = fmin(steps, log2(imageSource.width())-1);
+	
+	std::cout << "Generating laplacian pyramid with " << steps << " levels." << std::endl;
 
-	//CImg<float> grayscale = toGrayscale(&imageSource);
-	//CImg<float> blurred = getBlur(&imageSource);
+	std::vector<CImg<float>> laplacianBuffer = generatePyramid(&imageSource, outputPath, ext, steps);
 
-	//blurred.save((outputPath+"\\blurred."+ext).c_str());
+	CImg<float> lastGaussianImg = laplacianBuffer.back();
+	laplacianBuffer.pop_back();
 
-	//generatePyramid(&imageSource, outputPyramidPath, ext, steps);
+	for (int i = laplacianBuffer.size() - 1; i >= 0 ; i--) {
+		CImg<float> collapsed = colapse(&lastGaussianImg, &laplacianBuffer[i]);
+		if (debugMode) {
+			//lastGaussianImg.save((outputPath + "\\lastGaussianImg." + ext).c_str(), i);
+			collapsed.save((outputPath + "\\collapse." + ext).c_str(), i);
+		}
+		lastGaussianImg = collapsed;
+	}
+	
+	/*CImg<float> current = imageSource;
 
-	CImg<float> reduced = reduce(&imageSource);
-	CImg<float> expanded = expand(&reduced);
-	CImg<float> minus = imageSource - expanded;
-	CImg<float> sum = minus + expanded;
+	for (int i = 0; i < 3; i++) {
+		
+		CImg<float> reduced = reduce(&current);
+		CImg<float> expanded = expand(&reduced);
+		CImg<float> laplacian = minus(&current,&expanded);
+		CImg<float> laplacianR = sum(&laplacian, &expanded);
+		
 
-	reduced.save((outputPath + "\\reduced." + ext).c_str());
-	expanded.save((outputPath + "\\expanded." + ext).c_str());
-	minus.save((outputPath + "\\minus." + ext).c_str());
-	sum.save((outputPath + "\\sum." + ext).c_str());
+		reduced.save((outputPath + "\\reduced." + ext).c_str(), i);
+		expanded.save((outputPath + "\\expanded." + ext).c_str(), i);
+		laplacian.save((outputPath + "\\laplacian." + ext).c_str(), i);
+		laplacianR.save((outputPath + "\\laplacianR." + ext).c_str(), i);
+		current = reduced;
 
 
-
+		
+	}*/
+	
 
 
 
 	return 0;
 }
 
-void generatePyramid(const CImg<float> * const source, std::string output, std::string ext, int steps) {
-	int width = source->width();
-	int height = source->height();
+std::vector<CImg<float>> generatePyramid(const CImg<float> * const source, std::string output, std::string ext, int steps) {
 
-	int halfWidth = width*.5;
-	int halfHeight = height*.5;
+	std::vector<CImg<float>> laplacianBuffer;
+	
+	
+	
+	CImg<float> current = *source;
+	
+	for (int i = 0; i < steps; i++) {
+		
+		std::cout << "Generating gaussian step " << i << std::endl;
+		CImg<float> gaussianImg = reduce(&current);
+		
+		CImg<float> expanded = expand(&gaussianImg);
+		CImg<float> laplacianImg = minus(&current, &expanded);
 
-	if (steps < 1) return;
+		current = gaussianImg;
 
-	try {
-		CImg<float> newImg(halfWidth, halfHeight, 1, 3, 255);
-
-		for (int i = 0; i < width; i += 2) {
-
-			for (int j = 0; j < height; j += 2) {
-
-				//std::cout << "i:" << i << " j:" << j << std::endl;
-				//td::cout << "x, y " << x << ", " << y << std::endl;
-
-				newImg(i*.5, j*.5, 0, 1) = (*source)(i, j, 1);
-				newImg(i*.5, j*.5, 0, 2) = (*source)(i, j, 2);
-				newImg(i*.5, j*.5, 0, 0) = (*source)(i, j, 0);
-			}
+		laplacianBuffer.push_back(laplacianImg);
+		if (i == steps - 1) {
+			laplacianBuffer.push_back(gaussianImg);
 		}
 
-
-		newImg.save((output + "\\pyramid." + ext).c_str(), halfWidth);
-
-		generatePyramid(&newImg, output, ext, steps - 1);
-
+		if (debugMode) {
+			gaussianImg.save((output + "\\gaussian." + ext).c_str(), i);
+			expanded.save((output + "\\expanded." + ext).c_str(), i);
+			laplacianImg.save((output + "\\laplacian." + ext).c_str(), i);
+		}
 	}
-	catch (CImgInstanceException e) {
-		std::cout << e._message;
-	}
+	
+	return laplacianBuffer;
 }
 
 CImg<float> toGrayscale(const CImg<float> * const source) {
@@ -107,60 +128,6 @@ CImg<float> toGrayscale(const CImg<float> * const source) {
 	return grayscaleLena;
 }
 
-CImg<float> getBlur(const CImg<float> * const source) {
-	int width = source->width();
-	int height = source->height();
-	CImg<float> blurredX(width, height, 1, 3, 255);
-	CImg<float> blurredOne(width, height, 1, 3, 255);
-
-	float fx = 1.0 / 16.0;
-	float gaussianBlur[] = { 1 * fx, 4 * fx, 6 * fx, 4 * fx, 1 * fx };
-
-	float magnitudeR = 0.0;
-	float magnitudeG = 0.0;
-	float magnitudeB = 0.0;
-	int offset = 2;
-
-	for (int j = 0; j < height; j++)
-		for (int i = offset; i <= width - offset; i++) {
-
-			for (int x = 0; x < 5; x++) {
-				magnitudeR += gaussianBlur[x] * (*source)(i - offset + x, j, 0);
-				magnitudeG += gaussianBlur[x] * (*source)(i - offset + x, j, 1);
-				magnitudeB += gaussianBlur[x] * (*source)(i - offset + x, j, 2);
-			}
-
-			blurredX(i, j, 0) = magnitudeR;
-			blurredX(i, j, 1) = magnitudeG;
-			blurredX(i, j, 2) = magnitudeB;
-
-			magnitudeR = 0.0;
-			magnitudeG = 0.0;
-			magnitudeB = 0.0;
-		}
-
-	for (int i = 0; i < width; i++)
-		for (int j = offset; j <= height - offset; j++) {
-
-			for (int x = 0; x < 5; x++) {
-				magnitudeR += gaussianBlur[x] * blurredX(i, j - offset + x, 0);
-				magnitudeG += gaussianBlur[x] * blurredX(i, j - offset + x, 1);
-				magnitudeB += gaussianBlur[x] * blurredX(i, j - offset + x, 2);
-			}
-
-			blurredOne(i, j, 0) = magnitudeR;
-			blurredOne(i, j, 1) = magnitudeG;
-			blurredOne(i, j, 2) = magnitudeB;
-
-			magnitudeR = 0.0;
-			magnitudeG = 0.0;
-			magnitudeB = 0.0;
-		}
-
-	return blurredOne;
-
-}
-
 CImg<float> apply1DKernel(const CImg<float> * const source, std::vector<float> kernel) {
 	int width = source->width();
 	int height = source->height();
@@ -170,15 +137,17 @@ CImg<float> apply1DKernel(const CImg<float> * const source, std::vector<float> k
 	float magnitudeR = 0.0;
 	float magnitudeG = 0.0;
 	float magnitudeB = 0.0;
-	int offset = 2;
+	int offset = kernel.size()/2;
 
 	for (int j = 0; j < height; j++)
-		for (int i = offset; i <= width - offset; i++) {
+		for (int i = offset; i < width - offset; i++) {
 
 			for (int x = 0; x < kernel.size(); x++) {
-				magnitudeR += (kernel[x] * ((*source)(i - offset + x, j, 0) / 255)) * 255;
-				magnitudeG += (kernel[x] * ((*source)(i - offset + x, j, 1) / 255)) * 255;
-				magnitudeB += (kernel[x] * ((*source)(i - offset + x, j, 2) / 255)) * 255;
+				int offsetI = i - offset + x;
+
+				magnitudeR += (kernel[x] * ((*source)(offsetI, j, 0) / 255)) * 255;
+				magnitudeG += (kernel[x] * ((*source)(offsetI, j, 1) / 255)) * 255;
+				magnitudeB += (kernel[x] * ((*source)(offsetI, j, 2) / 255)) * 255;
 			}
 
 			firstPass(i, j, 0) = magnitudeR;
@@ -191,12 +160,14 @@ CImg<float> apply1DKernel(const CImg<float> * const source, std::vector<float> k
 		}
 
 	for (int i = 0; i < width; i++)
-		for (int j = offset; j <= height - offset; j++) {
-
+		for (int j = offset; j < height - offset; j++) {
+			
 			for (int x = 0; x < kernel.size(); x++) {
-				magnitudeR += (kernel[x] * (firstPass(i, j - offset + x, 0) / 255)) * 255;
-				magnitudeG += (kernel[x] * (firstPass(i, j - offset + x, 1) / 255)) * 255;
-				magnitudeB += (kernel[x] * (firstPass(i, j - offset + x, 2) / 255)) * 255;
+				int offsetJ = j - offset + x;
+
+				magnitudeR += (kernel[x] * (firstPass(i, offsetJ, 0) / 255)) * 255;
+				magnitudeG += (kernel[x] * (firstPass(i, offsetJ, 1) / 255)) * 255;
+				magnitudeB += (kernel[x] * (firstPass(i, offsetJ, 2) / 255)) * 255;
 			}
 
 			secondPass(i, j, 0) = magnitudeR;
@@ -283,7 +254,42 @@ CImg<float> reduce(const CImg<float> * const source) {
 CImg<float> expand(const CImg<float> * const source) {
 	float weight = 1.0 / 16.0;
 	float kernel[] = { 1 * weight, 4 * weight, 6 * weight, 4 * weight, 1 * weight };
-
 	return apply1DKernel(&upsample(source), std::vector<float>(kernel, kernel + sizeof(kernel) / sizeof(kernel[0])));
 }
-//CImg<float> colapse(const CImg<float> * const source) {}
+
+CImg<float> colapse(const CImg<float> * const gaussian, const CImg<float> * const laplacian) {
+	CImg<float> expd = expand(gaussian);
+
+	//expd.save("C:\\Users\\Leandro\\Documents\\output_imgs\\expd.gif",(*gaussian).width());
+	CImg<float> collapsed = sum(laplacian, &expd);
+	return collapsed;
+}
+
+CImg<float> sum(const CImg<float> * const a, const CImg<float> * const b) {
+	int size = (*a).width();
+	CImg<float> result(size, size, 1, 3, 255);
+	for (int i = 0; i < size; i++) {
+		for (int j = 0; j < size; j++) {
+			result(i, j, 0) = (*a)(i, j, 0) + (*b)(i, j, 0);
+			result(i, j, 1) = (*a)(i, j, 1) + (*b)(i, j, 1);
+			result(i, j, 2) = (*a)(i, j, 2) + (*b)(i, j, 2);
+		}
+	}
+
+	return result;
+}
+
+CImg<float> minus(const CImg<float> * const a, const CImg<float> * const b) {
+	int size = (*a).width();
+	CImg<float> result(size, size, 1, 3, 255);
+	for (int i = 0; i < size; i++) {
+		for (int j = 0; j < size; j++) {
+			result(i, j, 0) = (*a)(i, j, 0) - (*b)(i, j, 0);
+			result(i, j, 1) = (*a)(i, j, 1) - (*b)(i, j, 1);
+			result(i, j, 2) = (*a)(i, j, 2) - (*b)(i, j, 2);
+		}
+	}
+
+	return result;
+}
+
