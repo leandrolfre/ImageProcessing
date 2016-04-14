@@ -170,7 +170,7 @@ CImg<float> apply1DKernel(const CImg<float> * const source, std::vector<float> k
 				}
 
 				for (int k = 0; k < source->spectrum(); k++) {
-					magnitude[k] += (kernel[x] * ((*source)(offsetI, j, k) / 255)) * 255;
+					magnitude[k] += (kernel[x]/255.0 * ((*source)(offsetI, j, k) / 255)) * 255;
 				}
 				
 			}
@@ -197,7 +197,7 @@ CImg<float> apply1DKernel(const CImg<float> * const source, std::vector<float> k
 				}
 
 				for (int k = 0; k < firstPass.spectrum(); k++) {
-					magnitude[k] += (kernel[x] * (firstPass(i, offsetJ, k) / 255)) * 255;
+					magnitude[k] += (kernel[x]/255.0 * (firstPass(i, offsetJ, k) / 255)) * 255;
 				}
 			}
 
@@ -244,12 +244,7 @@ CImg<float> upsample(const CImg<float> * const source) {
 	CImg<float> newImg(doubleWidth, doubleHeight, 1, 3, 0);
 
 	for (int i = 0; i < width; i++) {
-
 		for (int j = 0; j < height; j++) {
-
-			//std::cout << "i:" << i << " j:" << j << std::endl;
-			//td::cout << "x, y " << x << ", " << y << std::endl;
-
 			for (int k = 0; k < source->spectrum(); k++) {
 				newImg(i * 2, j * 2, k) = (*source)(i, j, k);
 			}
@@ -258,42 +253,6 @@ CImg<float> upsample(const CImg<float> * const source) {
 	}
 
 	return newImg;
-
-	//int width = source->width();
-	//int height = source->height();
-
-	//int doubleWidth = width * 2;
-	//int doubleHeight = height * 2;
-
-	//CImg<float> newImg(doubleWidth, doubleHeight, 1, 3, 255);
-
-	//for (int i = 0; i < width; i++) {
-
-	//	for (int j = 0; j < height; j++) {
-
-	//		//std::cout << "i:" << i << " j:" << j << std::endl;
-	//		//td::cout << "x, y " << x << ", " << y << std::endl;
-
-	//		newImg(i * 2, j * 2, 0, 1) = (*source)(i, j, 1);
-	//		newImg(i * 2, j * 2, 0, 2) = (*source)(i, j, 2);
-	//		newImg(i * 2, j * 2, 0, 0) = (*source)(i, j, 0);
-
-	//		newImg(i * 2 + 1, j * 2, 0, 1) = (*source)(i, j, 1);
-	//		newImg(i * 2 + 1, j * 2, 0, 2) = (*source)(i, j, 2);
-	//		newImg(i * 2 + 1, j * 2, 0, 0) = (*source)(i, j, 0);
-
-	//		newImg(i * 2, j * 2 + 1, 0, 1) = (*source)(i, j, 1);
-	//		newImg(i * 2, j * 2 + 1, 0, 2) = (*source)(i, j, 2);
-	//		newImg(i * 2, j * 2 + 1, 0, 0) = (*source)(i, j, 0);
-
-	//		newImg(i * 2 + 1, j * 2 + 1, 0, 1) = (*source)(i, j, 1);
-	//		newImg(i * 2 + 1, j * 2 + 1, 0, 2) = (*source)(i, j, 2);
-	//		newImg(i * 2 + 1, j * 2 + 1, 0, 0) = (*source)(i, j, 0);
-
-	//	}
-	//}
-
-	//return newImg;
 }
 
 CImg<float> reduce(const CImg<float> * const source) {
@@ -366,7 +325,7 @@ CImg<float> blend(const CImg<float> * const imgA, const CImg<float> * const imgB
 	for (int i = 0; i < lbImgA.size(); i++) {
 		std::cout << "Blending Step " << i << std::endl;
 		lbBlend.push_back(CImg<float>(lbImgA[i].width(), lbImgA[i].height(), 1, 3, 255.0));
-
+		gbMask[i] /= 255.0;
 		for (int x = 0; x < lbImgA[i].width(); x++) {
 			for (int y = 0; y < lbImgA[i].height(); y++) {
 
@@ -379,6 +338,17 @@ CImg<float> blend(const CImg<float> * const imgA, const CImg<float> * const imgB
 				float maskG = 0.0;
 				float maskB = 0.0;
 
+				
+				/*lbImgA[i] /= 255.0;
+				lbImgB[i] /= 255.0;
+				CImg<float> maskXImgA = gbMask[i] * lbImgA[i];
+				CImg<float> maskXImgB = (1 - gbMask[i]) * lbImgB[i];
+				lbBlend[i] = maskXImgA + maskXImgB;
+
+				lbImgA[i] *= 255.0;
+				lbImgB[i] *= 255.0;
+				lbBlend[i] *= 255.0;*/
+
 				if (gbMask[i].spectrum() == 1) {
 					maskR = maskG = maskB = gbMask[i](x, y, 0);
 				} else if (gbMask[i].spectrum() == 3) {
@@ -386,15 +356,13 @@ CImg<float> blend(const CImg<float> * const imgA, const CImg<float> * const imgB
 					maskG = gbMask[i](x, y, 1);
 					maskB = gbMask[i](x, y, 2);
 				}
+
+				
 				
 
-				/*lbBlend[i](x, y, 0) = ((maskR * (lbImgA[i](x, y, 0) / 255.0)) + ((1 - maskR ) * (lbImgB[i](x, y, 0) / 255.0))) * 255.0;
-				lbBlend[i](x, y, 1) = ((maskG * (lbImgA[i](x, y, 1) / 255.0)) + ((1 - maskG ) * (lbImgB[i](x, y, 1) / 255.0))) * 255.0;
-				lbBlend[i](x, y, 2) = ((maskB * (lbImgA[i](x, y, 2) / 255.0)) + ((1 - maskB ) * (lbImgB[i](x, y, 2) / 255.0))) * 255.0;*/
-
-				lbBlend[i](x, y, 0) = (maskR * lbImgA[i](x, y, 0) + (1 - maskR) * lbImgB[i](x, y, 0) );
-				lbBlend[i](x, y, 1) = (maskG * lbImgA[i](x, y, 1) + (1 - maskG) * lbImgB[i](x, y, 1) );
-				lbBlend[i](x, y, 2) = (maskB * lbImgA[i](x, y, 2) + (1 - maskB) * lbImgB[i](x, y, 2) );
+				lbBlend[i](x, y, 0) = (maskR * lbImgA[i](x, y, 0) + (1 - maskR ) * lbImgB[i](x, y, 0) );
+				lbBlend[i](x, y, 1) = (maskG * lbImgA[i](x, y, 1) + (1 - maskG ) * lbImgB[i](x, y, 1) );
+				lbBlend[i](x, y, 2) = (maskB * lbImgA[i](x, y, 2) + (1 - maskB ) * lbImgB[i](x, y, 2) );
 			}
 		}
 	}
