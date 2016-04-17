@@ -83,8 +83,8 @@ std::vector<CImg<float>> generatePyramid(const CImg<float> * const source) {
 CImg<float> apply1DKernel(const CImg<float> * const source, std::vector<float> kernel) {
 	int width = source->width();
 	int height = source->height();
-	CImg<float> firstPass(width, height, 1, source->spectrum(), 0);
-	CImg<float> secondPass(width, height, 1, source->spectrum(), 0);
+	CImg<float> firstPass(width, height, 1, source->spectrum(), 255.0);
+	CImg<float> secondPass(width, height, 1, source->spectrum(), 255.0);
 
 	float magnitude[3] = { 0.0, 0.0, 0.0 };
 	int offset = kernel.size() / 2;
