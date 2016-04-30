@@ -24,7 +24,7 @@ std::string maskImagePath;
 std::string outputPath;
 int steps;
 
-int main(int argc, char **argv) {
+int _main(int argc, char **argv) {
 
 	sourceImagePath = cimg_option("-i", "", "Input image source");
 	blendImagePath = cimg_option("-b", "", "Input blend image source");
@@ -259,10 +259,10 @@ CImg<float> blend(const CImg<float> * const imgA, const CImg<float> * const imgB
 		for (int x = 0; x < lbImgA[i].width(); x++) {
 			for (int y = 0; y < lbImgA[i].height(); y++) {
 
-				float mask = gbMask[i](x, y, 0);
+				//float mask = gbMask[i](x, y, 0);
 
 				for (int k = 0; k < lbImgA[i].spectrum(); k++) {
-					lbBlend[i](x, y, k) = (mask * lbImgA[i](x, y, k) + ((1.0 - mask) * lbImgB[i](x, y, k)));
+					lbBlend[i](x, y, k) = (gbMask[i](x, y, k) * lbImgA[i](x, y, k) + ((1.0 - gbMask[i](x, y, k)) * lbImgB[i](x, y, k)));
 				}
 			}
 		}
