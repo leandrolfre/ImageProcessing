@@ -38,7 +38,7 @@ struct MyPoint {
 	int x;
 	int y;
 	int cols;
-	bool operator() (const MyPoint& p1, const MyPoint& p2) const { return p1.x + p1.y*p1.cols < p2.x + p2.y*p2.cols; }
+	bool operator() (const MyPoint& p1, const MyPoint& p2) const { return p1.y + p1.x*p1.cols < p2.y + p2.x*p2.cols; }
 };
 
 int main(int argc, char** argv) {
@@ -242,13 +242,15 @@ void onMouseCallback(int event, int x, int y, int flags, void* userData) {
 			rectangle(c, rect, Scalar(0.0, 0.0, 255.0, 255.0), 1, CV_AA, 0);
 
 			imshow(sourceWindow, c);*/
-			klt();
+			
 		}
 
 	}
 
 	if (event == EVENT_LBUTTONUP) {
+		klt();
 		startPointX = startPointY = -1;
+		
 	}
 	
 	
@@ -263,8 +265,8 @@ void klt() {
 	cvtColor(srcA, srcAGray, COLOR_BGR2GRAY);
 	cvtColor(srcB, srcBGray, COLOR_BGR2GRAY);
 
-	srcAGray.convertTo(srcAGray, CV_32FC(srcAGray.channels()));
-	srcBGray.convertTo(srcBGray, CV_32FC(srcBGray.channels()));
+	srcAGray.convertTo(srcAGray, CV_32FC1);
+	srcBGray.convertTo(srcBGray, CV_32FC1);
 
 	int type = srcAGray.type();
 	int cols = srcAGray.cols;
@@ -272,6 +274,8 @@ void klt() {
 
 	Mat iX = Mat::zeros(rows, cols, type);
 	Mat iY = Mat::zeros(rows, cols, type);
+	Mat iX2 = Mat::zeros(rows, cols, type);
+	Mat iY2= Mat::zeros(rows, cols, type);
 	Mat iXY, t, tIx, tIy;
 
 	//calcular gradiente em x e y	
@@ -282,10 +286,11 @@ void klt() {
 
 	//executar as operações pixel-wise: Ix*Ix Iy*Iy Ix*Iy Ix*t Iy*t
 	multiply(iX, iY, iXY);
-	multiply(iX, iX, iX);
-	multiply(iY, iY, iY);
 	multiply(iX, t, tIx);
 	multiply(iY, t, tIy);
+	multiply(iX, iX, iX2);
+	multiply(iY, iY, iY2);
+	
 
 	//passar um filtro gaussiano nos resultados das operações acima
 	Mat gaussianX2 = Mat::zeros(rows, cols, type);
@@ -294,44 +299,43 @@ void klt() {
 	Mat gaussianTIx = Mat::zeros(rows, cols, type);
 	Mat gaussianTIy = Mat::zeros(rows, cols, type);
 
-	gaussianFilter(&iX, &gaussianX2);
-	gaussianFilter(&iY, &gaussianY2);
+	gaussianFilter(&iX2, &gaussianX2);
+	gaussianFilter(&iY2, &gaussianY2);
 	gaussianFilter(&iXY, &gaussianXY);
 	gaussianFilter(&tIx, &gaussianTIx);
 	gaussianFilter(&tIy, &gaussianTIy);
 
 	//encontrar boas features
 	Mat aTa = Mat::zeros(2, 2, type);
-	Mat aTb = Mat::zeros(2, 2, type);
 	Mat eigenValues = Mat::zeros(1, 2, CV_32F);
 	map<MyPoint, float, MyPoint> points;
 	Mat dstCircles = srcA.clone();
 
 	for (int j = roi.y; j < roi.y + roi.height; j++)
 	{
-		for (int i = roi.x; i < roi.x+ roi.width; i++)
+		for (int i = roi.x; i < roi.x + roi.width; i++)
 		{
 
 			aTa = (Mat_<float>(2, 2) << gaussianX2.at<float>(j, i), gaussianXY.at<float>(j, i), gaussianXY.at<float>(j, i), gaussianY2.at<float>(j, i));
-			
+			eigen(&aTa, &eigenValues);
 			
 
-			if (determinant(aTa) != 0)
+			if (eigenValues.at<float>(0) > 0 && eigenValues.at<float>(1) > 0)
 			{
-				MyPoint p(i, j, cols);
-				eigen(&aTa, &eigenValues);
+				MyPoint p(j, i, cols);
 				points[p] = min(eigenValues.at<float>(0), eigenValues.at<float>(1));
 			}
 		}
 	}
-	float maxLambda = max_element(points.begin(), points.end(), [](const pair<MyPoint, float>& p1, const pair<MyPoint, float>& p2) {
-		return p1.second < p2.second; })->second;
+	map<MyPoint, float, MyPoint>::iterator maxLambdaIt = max_element(points.begin(), points.end(), [](const pair<MyPoint, float>& p1, const pair<MyPoint, float>& p2) {
+		return p1.second <= p2.second; });
 
+	float maxLambda = (maxLambdaIt != points.end() ? maxLambdaIt->second : 0.0f);
 	map<MyPoint, float, MyPoint> goodPoints;
 	for (map<MyPoint, float>::iterator iterator = points.begin(); iterator != points.end(); iterator++) {
 		float lambda = iterator->second;
 		MyPoint p = iterator->first;
-		if (lambda > maxLambda * 0.5) {
+		if (lambda > maxLambda * 0.6) {
 			goodPoints[p] = lambda;
 		} 
 	}
@@ -354,26 +358,30 @@ void klt() {
 
 
 		map<MyPoint, float>::iterator maxLocal = max_element(neighbours.begin(), neighbours.end(), [](const pair<MyPoint, float>& p1, const pair < MyPoint, float>& p2) {
-			return p1.second < p2.second;
+			return p1.second <= p2.second;
 		});
+		
 		filteredPoints[maxLocal->first] = maxLocal->second;
+		
+		
 		neighbours.clear();
 	}
-
+	Mat v = Mat::zeros(2, 1, type);
+	Mat aTb = Mat::zeros(2, 1, type);
 	for (map<MyPoint, float>::iterator iterator = filteredPoints.begin(); iterator != filteredPoints.end(); iterator++) {
 		MyPoint p = iterator->first;
-		aTb = (Mat_<float>(2, 1) << gaussianTIx.at<float>(p.y, p.x), gaussianTIy.at<float>(p.y, p.x));
-		aTa = (Mat_<float>(2, 2) << gaussianX2.at<float>(p.y, p.x), gaussianXY.at<float>(p.y, p.x), gaussianXY.at<float>(p.y, p.x), gaussianY2.at<float>(p.y, p.x));
-		Mat v = aTa.inv()*aTb;
-		//cout << v;
-		circle(dstCircles, Point(p.x, p.y), 5, Scalar(0.0, 0.0, 255.0, 255.0), 1, CV_AA, 0);
-		float radians = atan2(v.at<float>(1,0), v.at<float>(0,0));
+		aTb = (Mat_<float>(2, 1) << -gaussianTIx.at<float>(p.x, p.y), -gaussianTIy.at<float>(p.x, p.y));
+		aTa = (Mat_<float>(2, 2) << gaussianX2.at<float>(p.x, p.y), gaussianXY.at<float>(p.x, p.y), gaussianXY.at<float>(p.x, p.y), gaussianY2.at<float>(p.x, p.y));
+		Mat u = aTa.inv()*(aTb);
 		
-		int x = cos(radians);
-		int y = sin(radians);
-
-		circle(srcB, Point(x + p.x, y + p.y), 5, Scalar(0.0, 0.0, 255.0, 255.0), 1, CV_AA, 0);
-		
+		circle(dstCircles, Point(p.y, p.x), 1, Scalar(0.0, 0.0, 255.0, 255.0), 1, CV_AA, 0);
+		double rad = atan2(u.at<float>(1, 0), u.at<float>(0, 0));
+		int x = round(abs(cos(rad)));
+		int y = round(-abs(sin(rad)));
+		Point newPoint(p.y+x, p.x+y);
+		Point current(p.y, p.x);
+		//arrowedLine(srcB, current, newPoint, Scalar(0.0, 0.0, 255.0, 255.0), 1, CV_AA, 0);
+		circle(srcB, newPoint, 1, Scalar(0.0, 0.0, 255.0, 255.0), 1, CV_AA, 0);
 	}
 	
 	rectangle(dstCircles, roi, Scalar(0.0, 0.0, 255.0, 255.0), 1, CV_AA, 0);
