@@ -376,10 +376,11 @@ void klt() {
 		
 		circle(dstCircles, Point(p.y, p.x), 1, Scalar(0.0, 0.0, 255.0, 255.0), 1, CV_AA, 0);
 		double rad = atan2(u.at<float>(1, 0), u.at<float>(0, 0));
-		int x = round(abs(cos(rad)));
-		int y = round(-abs(sin(rad)));
+		int x = round(cos(rad));
+		int y = round(sin(rad)*-1);
 		Point newPoint(p.y+x, p.x+y);
 		Point current(p.y, p.x);
+		cout << " x:" << x << " y:" << y << endl;
 		//arrowedLine(srcB, current, newPoint, Scalar(0.0, 0.0, 255.0, 255.0), 1, CV_AA, 0);
 		circle(srcB, newPoint, 1, Scalar(0.0, 0.0, 255.0, 255.0), 1, CV_AA, 0);
 	}
