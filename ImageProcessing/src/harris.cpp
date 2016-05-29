@@ -10,18 +10,18 @@ using namespace cv;
 using namespace std;
 
 struct MyPoint {
-	MyPoint(int _x, int _y, int _cols) {
+	MyPoint(int _x, int _y, int _rows) {
 		x = _x;
 		y = _y;
-		cols = _cols;
+		rows = _rows;
 	}
 
 	MyPoint() {}
 
 	int x;
 	int y;
-	int cols;
-	bool operator() (const MyPoint& p1, const MyPoint& p2) const { return p1.y + p1.x*p1.cols < p2.y + p2.x*p2.cols; }
+	int rows;
+	bool operator() (const MyPoint& p1, const MyPoint& p2) const { return p1.x + p1.y*p1.rows < p2.x + p2.y*p2.rows; }
 };
 
 void applyKernel(const Mat* const, Mat*, Mat);
@@ -55,8 +55,8 @@ int main(int argc, char** argv) {
 	namedWindow(sourceWindow, CV_WINDOW_AUTOSIZE);
 	//namedWindow(cornersWindow, CV_WINDOW_AUTOSIZE);
 	setMouseCallback(sourceWindow, onMouseCallback, 0);
-	videoInput.open("C:\\Users\\Leandro\\Documents\\car\\%04d.jpg");
-	videoOutput.open("C:\\Users\\Leandro\\Documents\\car\\tracker.mp4", CV_FOURCC('F', 'M', 'P', '4'), 30.0, cvSize(videoInput.get(CAP_PROP_FRAME_WIDTH), videoInput.get(CAP_PROP_FRAME_HEIGHT)));
+	videoInput.open("C:\\Users\\Leandro\\Documents\\car2\\%04d.png");
+	videoOutput.open("C:\\Users\\Leandro\\Documents\\car2\\tracker.mp4", CV_FOURCC('F', 'M', 'P', '4'), 30.0, cvSize(videoInput.get(CAP_PROP_FRAME_WIDTH), videoInput.get(CAP_PROP_FRAME_HEIGHT)));
 
 	videoInput >> srcA;
 	cvtColor(srcA, srcAGray, COLOR_BGR2GRAY);
@@ -116,7 +116,7 @@ int main(int argc, char** argv) {
 			/*roi.x += x;
 			roi.y += y;*/
 			//rectangle(srcBClone, roi, Scalar(0.0, 0.0, 255.0, 255.0), 1, CV_AA, 0);
-			circle(srcBClone, Point(goodPoints[i].y, goodPoints[i].x), 1, Scalar(0.0, 0.0, 255.0, 255.0), 1, CV_AA, 0);
+			circle(srcBClone, Point(goodPoints[i].x, goodPoints[i].y), 1, Scalar(0.0, 0.0, 255.0, 255.0), 1, CV_AA, 0);
 		}
 
 		/*x /= goodPoints.size();
@@ -331,7 +331,7 @@ vector<MyPoint> getGoodPoints(const Mat* const x2, const Mat* const xy, const Ma
 
 			if (eigenValues.at<float>(0) > 0 && eigenValues.at<float>(1) > 0)
 			{
-				MyPoint p(j, i, cols);
+				MyPoint p(i, j, cols);
 				points[p] = min(eigenValues.at<float>(0), eigenValues.at<float>(1));
 			}
 		}
@@ -344,7 +344,7 @@ vector<MyPoint> getGoodPoints(const Mat* const x2, const Mat* const xy, const Ma
 	for (map<MyPoint, float>::iterator iterator = points.begin(); iterator != points.end(); iterator++) {
 		float lambda = iterator->second;
 		MyPoint p = iterator->first;
-		if (lambda > maxLambda * 0.1) {
+		if (lambda > maxLambda * 0.6) {
 			goodPoints[p] = lambda;
 		}
 	}
@@ -357,7 +357,7 @@ vector<MyPoint> getGoodPoints(const Mat* const x2, const Mat* const xy, const Ma
 
 		for (int i = -1; i < 2; i++) {
 			for (int j = -1; j < 2; j++) {
-				map<MyPoint, float>::iterator it = goodPoints.find(MyPoint(current.x + j, current.y + i, cols));
+				map<MyPoint, float>::iterator it = goodPoints.find(MyPoint(current.x + i, current.y + j, cols));
 				if (it != goodPoints.end()) {
 					neighbours[it->first] = it->second;
 				}
@@ -389,7 +389,7 @@ vector<MyPoint> getFlow(const vector<MyPoint>* const goodPoints, const Mat* cons
 	float x = 0;
 	float y = 0;
 
-	int levels = 6;
+	int levels = 3;
 
 	vector<Mat> vGaussianTIx = generatePyramid(tx, levels);
 	vector<Mat> vGaussianTIy = generatePyramid(ty, levels);
@@ -404,37 +404,29 @@ vector<MyPoint> getFlow(const vector<MyPoint>* const goodPoints, const Mat* cons
 		MyPoint p = goodPoints->at(point);
 
 		Mat lastFlow = Mat::zeros(2, 1, type);
-		for (int l = levels; l >= 0; l--) {
+		for (int l = levels; l > 0; l--) {
 			int level = pow(2, l);
-			aTa = (Mat_<float>(2, 2) << vGaussianX2[l].at<float>(p.x / level, p.y / level), vGaussianXY[l].at<float>(p.x / level, p.y / level), vGaussianXY[l].at<float>(p.x / level, p.y / level), vGaussianY2[l].at<float>(p.x / level, p.y / level));
-			aTb = (Mat_<float>(2, 1) << -vGaussianTIx[l].at<float>(p.x / level, p.y / level), -vGaussianTIy[l].at<float>(p.x / level, p.y / level));
+			aTa = (Mat_<float>(2, 2) << vGaussianX2[l].at<float>(p.y / level, p.x / level), vGaussianXY[l].at<float>(p.y / level, p.x / level), vGaussianXY[l].at<float>(p.y / level, p.x / level), vGaussianY2[l].at<float>(p.y / level, p.x / level));
+			aTb = (Mat_<float>(2, 1) << -vGaussianTIx[l].at<float>(p.y / level, p.x / level), -vGaussianTIy[l].at<float>(p.y / level, p.x / level));
 
-			/*cout << "lastFlow - " << lastFlow << endl;
-			cout << "2*lastFlow - " << (2 * lastFlow) << endl;
-			cout << "flow - " << (aTa.inv()*(aTb)) << endl;*/
-			Mat currentFlow = (aTa.inv()*(aTb)) + (2 * lastFlow);
-			//cout << "currentFlow - " << currentFlow << endl;
+			float x1 = lastFlow.at<float>(1, 0);
+			float y1 = lastFlow.at<float>(0, 0);
+
+			Mat currentFlow = aTa.inv()*(aTb) + 2*lastFlow;
+			
+			float x2 = currentFlow.at<float>(1, 0);
+			float y2 = currentFlow.at<float>(0, 0);
+
 			lastFlow = currentFlow;
 
 		}
-		//circle(dstCircles, Point(p.y, p.x), 1, Scalar(0.0, 0.0, 255.0, 255.0), 1, CV_AA, 0);
-		double rad = atan2(lastFlow.at<float>(1, 0), lastFlow.at<float>(0, 0));
-		x = cos(rad);
-		y = sin(rad)*-1;
-		/*Point newPoint(p.y + lastFlow.at<float>(0, 0)*-1.0, p.x + lastFlow.at<float>(1, 0)*-1.0);
-		Point current(p.y, p.x);
+		
 
-		//debug
-		cout << "lastFlow: " << lastFlow << endl;
-		cout << "current: " << current << endl;
-		cout << "newPoint: " << newPoint << endl;*/
-		/*		arrowedLine(dstCircles, current, Point(p.y + x*15.0, p.x + y*15.0), Scalar(0.0, 0.0, 255.0, 255.0), 1, CV_AA, 0);*/
-		//circle(srcB, Point(p.y + x, p.x + y), 1, Scalar(0.0, 0.0, 255.0, 255.0), 1, CV_AA, 0);
-
-
-		flowPoints.push_back(MyPoint(p.x + lastFlow.at<float>(1, 0)*-1.0, p.y + lastFlow.at<float>(0, 0),0));
-		//cout << "lastFlow: " << lastFlow << endl;
-		//flowPoints.push_back(MyPoint(p.x + y, p.y + x, 0));
+		MyPoint newPoint(p.x + lastFlow.at<float>(1, 0), p.y + lastFlow.at<float>(0, 0), 0);
+		cout << "current - x:" << p.x << " y:" << p.y << endl;
+		cout << "new - x:" << newPoint.x << " y:" << newPoint.y << endl;
+		flowPoints.push_back(newPoint);
+		
 	}
 
 	return flowPoints;
